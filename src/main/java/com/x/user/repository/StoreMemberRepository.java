@@ -7,4 +7,8 @@ import java.util.List;
 
 public interface StoreMemberRepository extends JpaRepository<StoreMember, Long> {
     List<StoreMember> findByUser(User user);
+
+    boolean existsByUserIdAndStoreId(Long userId, Long storeId);
+
+    boolean existsByUserUsernameAndStoreId(String username, Long storeId);
 }

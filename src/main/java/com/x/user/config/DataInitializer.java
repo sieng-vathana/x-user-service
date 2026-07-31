@@ -53,16 +53,19 @@ public class DataInitializer implements CommandLineRunner {
     /**
      * Service → actions. Every service gets CRUD; some add domain-specific actions.
      */
-    private static final Map<String, List<String>> SERVICE_ACTIONS = Map.of(
-            "user", CRUD,
-            "business", CRUD,
-            "store", CRUD,
-            "product", CRUD,
-            "inventory", concat(CRUD, "stock-in", "stock-out"),
-            "order", concat(CRUD, "refund", "cancel"),
-            "storage", concat(CRUD, "upload"),
-            "payment", concat(CRUD, "capture", "refund"),
-            "bff", List.of("read")
+    private static final Map<String, List<String>> SERVICE_ACTIONS = Map.ofEntries(
+            Map.entry("user", CRUD),
+            Map.entry("business", CRUD),
+            Map.entry("store", CRUD),
+            Map.entry("customer", CRUD),
+            Map.entry("product", CRUD),
+            Map.entry("inventory", concat(CRUD, "stock-in", "stock-out", "reserve")),
+            Map.entry("order", concat(CRUD, "refund", "cancel")),
+            Map.entry("delivery", concat(CRUD, "quote", "remit")),
+            Map.entry("storage", concat(CRUD, "upload")),
+            Map.entry("payment", concat(CRUD, "capture", "refund")),
+            Map.entry("report", List.of("read")),
+            Map.entry("bff", List.of("read"))
     );
 
     private final UserRepository userRepository;
@@ -121,7 +124,10 @@ public class DataInitializer implements CommandLineRunner {
                 allActions("inventory"),
                 allActions("order"),
                 allActions("store"),
+                allActions("customer"),
+                allActions("delivery"),
                 allActions("storage"),
+                List.of("x-report:read"),
                 List.of("x-business:read"),
                 List.of("x-user:read"),
                 List.of("x-payment:read"),
@@ -132,6 +138,8 @@ public class DataInitializer implements CommandLineRunner {
                 List.of("x-product:read"),
                 List.of("x-inventory:read"),
                 List.of("x-order:read", "x-order:create"),
+                List.of("x-customer:read", "x-customer:create"),
+                List.of("x-payment:read", "x-payment:create", "x-payment:capture"),
                 List.of("x-store:read"),
                 List.of("x-business:read"),
                 List.of("x-storage:read"),

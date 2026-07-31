@@ -10,6 +10,10 @@ spring:
   profiles:
     # local-seed creates admin / Admin@123456 on empty DB
     default: local,local-seed
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
 
 # Used only when Spring profile "local-seed" is active.
 x:
@@ -21,6 +25,12 @@ x:
       hops:
         /internal/users: "x-api-gateway → x-bff → x-user-service"
         /api/v1/users: "x-api-gateway → x-bff → x-user-service"
+  redis:
+    enabled: ${X_REDIS_ENABLED:true}
+    key-prefix: x
+    default-ttl: 10m
+    caches:
+      user-by-username: 10m
   seed:
     admin-username: ${X_SEED_ADMIN_USERNAME:admin}
     admin-password: ${X_SEED_ADMIN_PASSWORD:Admin@123456}

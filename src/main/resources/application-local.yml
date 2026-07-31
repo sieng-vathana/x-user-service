@@ -4,7 +4,7 @@ spring:
       on-profile: local
     import: optional:file:../config/secrets.yml
   datasource:
-    url: jdbc:mysql://${db.host}:${db.port}/${db.dev.name}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+    url: jdbc:mysql://${db.dev.host}:${db.dev.port}/${db.dev.name}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: ${db.dev.username}
     password: ${db.dev.password}
     driver-class-name: com.mysql.cj.jdbc.Driver
