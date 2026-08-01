@@ -33,14 +33,14 @@
 	<repositories>
 		<repository>
 			<id>github-x-sharedlib</id>
-			<url>https://maven.pkg.github.com/VathanaProgrammer/x-sharedlib</url>
+			<url>https://maven.pkg.github.com/sieng-vathana/x-sharedlib</url>
 			<snapshots>
 				<enabled>true</enabled>
 			</snapshots>
 		</repository>
 		<repository>
 			<id>github-x-redis</id>
-			<url>https://maven.pkg.github.com/VathanaProgrammer/x-redis</url>
+			<url>https://maven.pkg.github.com/sieng-vathana/x-redis</url>
 			<snapshots>
 				<enabled>true</enabled>
 			</snapshots>
