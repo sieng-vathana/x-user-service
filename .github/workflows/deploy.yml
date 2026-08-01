@@ -26,6 +26,11 @@ jobs:
           repository: sieng-vathana/x-sharedlib
           path: x-sharedlib
       - run: mvn --batch-mode --no-transfer-progress -DskipTests install -f x-sharedlib/pom.xml
+      - uses: actions/checkout@v4
+        with:
+          repository: sieng-vathana/x-redis
+          path: x-redis
+      - run: mvn --batch-mode --no-transfer-progress -DskipTests install -f x-redis/pom.xml
       - run: mvn --batch-mode --no-transfer-progress -DskipTests package
       - uses: docker/login-action@v3
         with:
