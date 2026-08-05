@@ -58,7 +58,7 @@ public class DataInitializer implements CommandLineRunner {
             Map.entry("business", CRUD),
             Map.entry("store", CRUD),
             Map.entry("customer", CRUD),
-            Map.entry("product", CRUD),
+            Map.entry("product", concat(CRUD, "unit", "category")),
             Map.entry("inventory", concat(CRUD, "stock-in", "stock-out", "reserve")),
             Map.entry("order", concat(CRUD, "refund", "cancel")),
             Map.entry("delivery", concat(CRUD, "quote", "remit")),
@@ -135,7 +135,7 @@ public class DataInitializer implements CommandLineRunner {
 
         // CASHIER: read catalog/store/business/storage; create+read orders (no refund/cancel)
         ensureRolePermissions(cashierRole, permissions(byCode,
-                List.of("x-product:read"),
+                List.of("x-product:read", "x-product:unit", "x-product:category"),
                 List.of("x-inventory:read"),
                 List.of("x-order:read", "x-order:create"),
                 List.of("x-customer:read", "x-customer:create"),
