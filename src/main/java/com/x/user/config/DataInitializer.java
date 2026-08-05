@@ -135,7 +135,7 @@ public class DataInitializer implements CommandLineRunner {
 
         // CASHIER: read catalog/store/business/storage; create+read orders (no refund/cancel)
         ensureRolePermissions(cashierRole, permissions(byCode,
-                List.of("x-product:read", "x-product:unit", "x-product:category"),
+                List.of("x-product:read", "x-product:unit", "x-product:category", "x-product:brand", "x-product:tax"),
                 List.of("x-inventory:read"),
                 List.of("x-order:read", "x-order:create"),
                 List.of("x-customer:read", "x-customer:create"),
