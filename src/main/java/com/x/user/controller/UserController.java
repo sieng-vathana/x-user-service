@@ -49,6 +49,7 @@ public class UserController {
     private final UserAuthenticationLookupService userAuthenticationLookupService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
+    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, key = "#request.username().trim()")
     @PostMapping
     @Transactional
     public ResponseEntity<ApiResponse<UserResponse>> register(
@@ -74,7 +75,7 @@ public class UserController {
     }
 
     /** Removes an account created by a registration workflow that later failed. */
-    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, key = "#username")
+    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, key = "#username.trim()")
     @DeleteMapping("/{username}/registration-failure")
     @Transactional
     public ResponseEntity<Void> deleteFailedRegistration(@PathVariable String username) {
@@ -87,6 +88,7 @@ public class UserController {
     }
 
     /** Assigns the workspace creator the OWNER role for its newly created default store. */
+    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
     @PostMapping("/{userId}/stores/{storeId}/owner")
     @Transactional
     public ResponseEntity<Void> assignOwnerStoreMembership(
