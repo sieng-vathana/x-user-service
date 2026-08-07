@@ -109,7 +109,7 @@ public class UserController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping
+    @GetMapping({"", "/"})
     @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<PageResponse<UserResponse>>> getAllUsers(
             @RequestParam(defaultValue = "0") @Min(0) int page,
