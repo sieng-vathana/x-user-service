@@ -24,6 +24,7 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -139,5 +140,59 @@ public class UserController {
         boolean allowed = storeMemberRepository.existsByUserUsernameAndStoreId(username, storeId);
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
                 new StoreAccessResponse(storeId, allowed)));
+    }
+
+    @GetMapping("/by-id/{id:[0-9]+}")
+    @Transactional(readOnly = true)
+    public ResponseEntity<ApiResponse<UserResponse>> getUserById(@PathVariable Long id) {
+        return userRepository.findById(id)
+                .map(user -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), UserResponse.from(user))))
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "User not found")));
+    }
+
+    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
+    @PutMapping("/{id:[0-9]+}")
+    @Transactional
+    public ResponseEntity<ApiResponse<UserResponse>> updateUser(
+            @PathVariable Long id,
+            @jakarta.validation.Valid @RequestBody com.x.user.dto.UserUpdateRequest request) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        if (request.fullName() != null && !request.fullName().isBlank()) {
+            user.setFullName(request.fullName().trim());
+        }
+        if (request.email() != null) {
+            user.setEmail(request.email().trim());
+        }
+        if (request.phone() != null) {
+            user.setPhone(request.phone().trim());
+        }
+        if (request.status() != null) {
+            user.setStatus(request.status());
+        }
+        if (request.password() != null && !request.password().isBlank()) {
+            user.setPassword(passwordEncoder.encode(request.password()));
+        }
+        User updated = userRepository.save(user);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "User updated successfully", UserResponse.from(updated)));
+    }
+
+    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
+    @DeleteMapping("/{id:[0-9]+}")
+    @Transactional
+    public ResponseEntity<Void> deleteUserById(@PathVariable Long id) {
+        userRepository.findById(id).ifPresent(user -> {
+            refreshTokenRepository.deleteByUser(user);
+            storeMemberRepository.deleteAll(storeMemberRepository.findByUser(user));
+            userRepository.delete(user);
+        });
+        return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/roles")
+    @Transactional(readOnly = true)
+    public ResponseEntity<ApiResponse<?>> getRoles() {
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), roleRepository.findAll()));
     }
 }
