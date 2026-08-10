@@ -23,6 +23,7 @@ public class UserAuthenticationLookupService {
                         .id(user.getId())
                         .username(user.getUsername())
                         .fullName(user.getFullName())
+                        .email(user.getEmail())
                         .password(user.getPassword())
                         .permissions(userRepository.findPermissionCodesByUserId(user.getId()))
                         .build())
