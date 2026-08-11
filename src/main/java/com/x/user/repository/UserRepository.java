@@ -16,12 +16,26 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query(
             value = """
-                    SELECT DISTINCT sm.user
-                    FROM StoreMember sm
-                    WHERE sm.role.businessId = :businessId
-                    ORDER BY sm.user.id ASC
+                    SELECT u
+                    FROM User u
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM StoreMember sm
+                        WHERE sm.user = u
+                          AND sm.role.businessId = :businessId
+                    )
+                    ORDER BY u.id ASC
                     """,
-            countQuery = "SELECT COUNT(DISTINCT sm.user.id) FROM StoreMember sm WHERE sm.role.businessId = :businessId")
+            countQuery = """
+                    SELECT COUNT(u.id)
+                    FROM User u
+                    WHERE EXISTS (
+                        SELECT 1
+                        FROM StoreMember sm
+                        WHERE sm.user = u
+                          AND sm.role.businessId = :businessId
+                    )
+                    """)
     Page<User> findAllByBusinessId(@Param("businessId") Long businessId, Pageable pageable);
 
     /**
