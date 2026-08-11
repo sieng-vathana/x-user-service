@@ -155,7 +155,9 @@ public class UserController {
             @RequestParam(required = false) @Positive Long businessId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        var pageable = PageRequest.of(page, size, Sort.by("id").ascending());
+        var pageable = businessId == null
+                ? PageRequest.of(page, size, Sort.by("id").ascending())
+                : PageRequest.of(page, size);
         var users = businessId == null
                 ? userRepository.findAll(pageable)
                 : userRepository.findAllByBusinessId(businessId, pageable);

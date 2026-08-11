@@ -15,7 +15,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByUsername(String username);
 
     @Query(
-            value = "SELECT DISTINCT sm.user FROM StoreMember sm WHERE sm.role.businessId = :businessId",
+            value = """
+                    SELECT DISTINCT sm.user
+                    FROM StoreMember sm
+                    WHERE sm.role.businessId = :businessId
+                    ORDER BY sm.user.id ASC
+                    """,
             countQuery = "SELECT COUNT(DISTINCT sm.user.id) FROM StoreMember sm WHERE sm.role.businessId = :businessId")
     Page<User> findAllByBusinessId(@Param("businessId") Long businessId, Pageable pageable);
 
