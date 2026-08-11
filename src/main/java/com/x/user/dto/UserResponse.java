@@ -19,7 +19,8 @@ public record UserResponse(
         LocalDateTime lastLogin,
         LocalDateTime createdAt,
         LocalDateTime updatedAt,
-        List<String> roles) {
+        List<String> roles,
+        List<UserStoreMembershipResponse> memberships) {
 
     public static UserResponse from(User user) {
         return from(user, List.of());
@@ -44,6 +45,9 @@ public record UserResponse(
                         .map(role -> role.getRoleCode())
                         .filter(Objects::nonNull)
                         .distinct()
+                        .toList(),
+                memberships.stream()
+                        .map(UserStoreMembershipResponse::from)
                         .toList());
     }
 }

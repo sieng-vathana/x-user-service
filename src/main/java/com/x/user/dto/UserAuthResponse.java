@@ -18,4 +18,6 @@ public class UserAuthResponse {
     private String email;
     private String password;
     private Set<String> permissions;
+    private Set<Long> businessIds;
+    private Set<Long> storeIds;
 }

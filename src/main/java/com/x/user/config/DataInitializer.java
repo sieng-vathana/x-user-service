@@ -111,39 +111,10 @@ public class DataInitializer implements CommandLineRunner {
 
         // 2. Roles
         Role ownerRole = ensureRole("OWNER", "Business Owner", DEFAULT_BUSINESS_ID);
-        Role managerRole = ensureRole("MANAGER", "Store Manager", DEFAULT_BUSINESS_ID);
-        Role cashierRole = ensureRole("CASHIER", "Cashier", DEFAULT_BUSINESS_ID);
 
         // 3. Role → permission maps
         // OWNER: every permission
         ensureRolePermissions(ownerRole, new ArrayList<>(byCode.values()));
-
-        // MANAGER: full product/inventory/order/store/storage; read-only business/user/payment/bff
-        ensureRolePermissions(managerRole, permissions(byCode,
-                allActions("product"),
-                allActions("inventory"),
-                allActions("order"),
-                allActions("store"),
-                allActions("customer"),
-                allActions("delivery"),
-                allActions("storage"),
-                List.of("x-report:read"),
-                List.of("x-business:read"),
-                List.of("x-user:read"),
-                List.of("x-payment:read"),
-                List.of("x-bff:read")));
-
-        // CASHIER: read catalog/store/business/storage; create+read orders (no refund/cancel)
-        ensureRolePermissions(cashierRole, permissions(byCode,
-                List.of("x-product:read", "x-product:unit", "x-product:category", "x-product:brand", "x-product:tax"),
-                List.of("x-inventory:read"),
-                List.of("x-order:read", "x-order:create"),
-                List.of("x-customer:read", "x-customer:create"),
-                List.of("x-payment:read", "x-payment:create", "x-payment:capture"),
-                List.of("x-store:read"),
-                List.of("x-business:read"),
-                List.of("x-storage:read"),
-                List.of("x-bff:read")));
 
         // 4. Default admin user
         User admin = userRepository.findByUsername(adminUsername).orElse(null);
@@ -189,26 +160,6 @@ public class DataInitializer implements CommandLineRunner {
         return "x-" + service + ":" + action;
     }
 
-    private static List<String> allActions(String service) {
-        return SERVICE_ACTIONS.get(service).stream()
-                .map(action -> code(service, action))
-                .collect(Collectors.toList());
-    }
-
-    @SafeVarargs
-    private static List<Permission> permissions(Map<String, Permission> byCode, List<String>... groups) {
-        List<Permission> result = new ArrayList<>();
-        for (List<String> group : groups) {
-            for (String code : group) {
-                Permission p = byCode.get(code);
-                if (p != null) {
-                    result.add(p);
-                }
-            }
-        }
-        return result;
-    }
-
     private static String capitalize(String value) {
         if (value == null || value.isEmpty()) {
             return value;
@@ -227,7 +178,7 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private Role ensureRole(String code, String name, Long businessId) {
-        return roleRepository.findByRoleCode(code)
+        return roleRepository.findByBusinessIdAndRoleCodeIgnoreCase(businessId, code)
                 .orElseGet(() -> roleRepository.save(Role.builder()
                         .roleCode(code)
                         .roleName(name)

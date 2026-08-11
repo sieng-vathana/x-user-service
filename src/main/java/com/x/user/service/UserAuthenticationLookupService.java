@@ -18,6 +18,15 @@ public class UserAuthenticationLookupService {
     @Cacheable(cacheNames = CacheNames.USER_BY_USERNAME, key = "#username", unless = "#result == null")
     @Transactional(readOnly = true)
     public UserAuthResponse findByUsername(String username) {
+        return findByUsername(username, null);
+    }
+
+    @Cacheable(
+            cacheNames = CacheNames.USER_BY_USERNAME,
+            key = "#username + ':business:' + #businessId",
+            unless = "#result == null")
+    @Transactional(readOnly = true)
+    public UserAuthResponse findByUsername(String username, Long businessId) {
         return userRepository.findByUsername(username)
                 .map(user -> UserAuthResponse.builder()
                         .id(user.getId())
@@ -25,7 +34,13 @@ public class UserAuthenticationLookupService {
                         .fullName(user.getFullName())
                         .email(user.getEmail())
                         .password(user.getPassword())
-                        .permissions(userRepository.findPermissionCodesByUserId(user.getId()))
+                        .permissions(businessId == null
+                                ? userRepository.findPermissionCodesByUserId(user.getId())
+                                : userRepository.findPermissionCodesByUserIdAndBusinessId(user.getId(), businessId))
+                        .businessIds(userRepository.findBusinessIdsByUserId(user.getId()))
+                        .storeIds(businessId == null
+                                ? java.util.Set.of()
+                                : userRepository.findStoreIdsByUserIdAndBusinessId(user.getId(), businessId))
                         .build())
                 .orElse(null);
     }

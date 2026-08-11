@@ -1,13 +1,16 @@
 package com.x.user.controller;
 
 import com.x.user.dto.UserAuthResponse;
+import com.x.user.dto.OwnerAccessRequest;
+import com.x.user.dto.PermissionResponse;
+import com.x.user.dto.RoleUpsertRequest;
+import com.x.user.dto.StaffUserCreateRequest;
 import com.x.user.dto.UserRegistrationRequest;
 import com.x.user.dto.UserResponse;
 import com.x.user.dto.StoreAccessResponse;
 import com.x.user.dto.RoleDetailsResponse;
+import com.x.user.service.RoleManagementService;
 import com.x.user.service.UserAuthenticationLookupService;
-import com.x.user.repository.PermissionRepository;
-import com.x.user.repository.RolePermissionRepository;
 import com.x.user.repository.StoreMemberRepository;
 import com.x.user.repository.RoleRepository;
 import com.x.user.model.User;
@@ -51,10 +54,9 @@ public class UserController {
     private final UserRepository userRepository;
     private final StoreMemberRepository storeMemberRepository;
     private final RoleRepository roleRepository;
-    private final PermissionRepository permissionRepository;
-    private final RolePermissionRepository rolePermissionRepository;
     private final com.x.user.repository.RefreshTokenRepository refreshTokenRepository;
     private final UserAuthenticationLookupService userAuthenticationLookupService;
+    private final RoleManagementService roleManagementService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, key = "#request.username().trim()")
@@ -102,30 +104,67 @@ public class UserController {
     public ResponseEntity<Void> assignOwnerStoreMembership(
             @PathVariable @Positive Long userId,
             @PathVariable @Positive Long storeId) {
-        if (!storeMemberRepository.existsByUserIdAndStoreId(userId, storeId)) {
-            User user = userRepository.findById(userId)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
-            var ownerRole = roleRepository.findByRoleCode("OWNER")
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "OWNER role is not configured"));
-            storeMemberRepository.save(com.x.user.model.StoreMember.builder()
-                    .user(user)
-                    .storeId(storeId)
-                    .role(ownerRole)
-                    .build());
-        }
+        roleManagementService.ensureOwnerAccess(userId, 1L, List.of(storeId));
         return ResponseEntity.noContent().build();
+    }
+
+    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
+    @PostMapping("/{userId}/businesses/{businessId}/owner-access")
+    @Transactional
+    public ResponseEntity<Void> ensureOwnerBusinessAccess(
+            @PathVariable @Positive Long userId,
+            @PathVariable @Positive Long businessId,
+            @jakarta.validation.Valid @RequestBody OwnerAccessRequest request) {
+        roleManagementService.ensureOwnerAccess(userId, businessId, request.storeIds());
+        return ResponseEntity.noContent().build();
+    }
+
+    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
+    @PostMapping("/staff")
+    @Transactional
+    public ResponseEntity<ApiResponse<UserResponse>> createStaffUser(
+            @jakarta.validation.Valid @RequestBody StaffUserCreateRequest request) {
+        String username = request.username().trim();
+        if (userRepository.findByUsername(username).isPresent()) {
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error(HttpStatus.CONFLICT.value(), "Username is already in use"));
+        }
+        User user = userRepository.save(User.builder()
+                .username(username)
+                .password(passwordEncoder.encode(request.password()))
+                .fullName(request.fullName().trim())
+                .email(request.email() == null ? null : request.email().trim())
+                .phone(request.phone() == null ? null : request.phone().trim())
+                .failedAttempt(0)
+                .isLocked(false)
+                .status(request.status() == null ? 1 : request.status())
+                .build());
+        roleManagementService.assignStaffRole(
+                user, request.businessId(), request.roleId(), request.storeIds());
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(
+                        HttpStatus.CREATED.value(),
+                        "Staff account created",
+                        UserResponse.from(user, storeMemberRepository.findByUserAndRoleBusinessId(
+                                user, request.businessId()))));
     }
 
     @GetMapping({"", "/"})
     @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<PageResponse<UserResponse>>> getAllUsers(
+            @RequestParam(required = false) @Positive Long businessId,
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
-        var users = userRepository.findAll(PageRequest.of(page, size, Sort.by("id").ascending()));
+        var pageable = PageRequest.of(page, size, Sort.by("id").ascending());
+        var users = businessId == null
+                ? userRepository.findAll(pageable)
+                : userRepository.findAllByBusinessId(businessId, pageable);
         List<User> userList = users.getContent();
         Map<Long, List<com.x.user.model.StoreMember>> membershipsByUser = userList.isEmpty()
                 ? Map.of()
-                : storeMemberRepository.findByUserIn(userList).stream()
+                : (businessId == null
+                        ? storeMemberRepository.findByUserIn(userList)
+                        : storeMemberRepository.findByUserInAndRoleBusinessId(userList, businessId)).stream()
                         .collect(Collectors.groupingBy(member -> member.getUser().getId()));
         var responses = userList.stream()
                 .map(user -> UserResponse.from(user,
@@ -141,8 +180,10 @@ public class UserController {
      * Uses 2 DB queries total (user + permission codes) instead of N+1 lazy loads.
      */
     @GetMapping("/{username}")
-    public ResponseEntity<ApiResponse<UserAuthResponse>> getUserByUsername(@PathVariable String username) {
-        return java.util.Optional.ofNullable(userAuthenticationLookupService.findByUsername(username))
+    public ResponseEntity<ApiResponse<UserAuthResponse>> getUserByUsername(
+            @PathVariable String username,
+            @RequestParam(required = false) @Positive Long businessId) {
+        return java.util.Optional.ofNullable(userAuthenticationLookupService.findByUsername(username, businessId))
                 .map(response -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), response)))
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "User not found")));
@@ -159,10 +200,16 @@ public class UserController {
 
     @GetMapping("/by-id/{id:[0-9]+}")
     @Transactional(readOnly = true)
-    public ResponseEntity<ApiResponse<UserResponse>> getUserById(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<UserResponse>> getUserById(
+            @PathVariable Long id,
+            @RequestParam(required = false) @Positive Long businessId) {
         return userRepository.findById(id)
-                .map(user -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
-                        UserResponse.from(user, storeMemberRepository.findByUser(user)))))
+                .map(user -> Map.entry(user, businessId == null
+                        ? storeMemberRepository.findByUser(user)
+                        : storeMemberRepository.findByUserAndRoleBusinessId(user, businessId)))
+                .filter(entry -> businessId == null || !entry.getValue().isEmpty())
+                .map(entry -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
+                        UserResponse.from(entry.getKey(), entry.getValue()))))
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "User not found")));
     }
@@ -175,6 +222,22 @@ public class UserController {
             @jakarta.validation.Valid @RequestBody com.x.user.dto.UserUpdateRequest request) {
         User user = userRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        if (request.businessId() != null) {
+            List<com.x.user.model.StoreMember> businessMemberships =
+                    storeMemberRepository.findByUserAndRoleBusinessId(user, request.businessId());
+            if (businessMemberships.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found for this business");
+            }
+            boolean isBusinessOwner = businessMemberships.stream()
+                    .map(com.x.user.model.StoreMember::getRole)
+                    .filter(java.util.Objects::nonNull)
+                    .anyMatch(role -> "OWNER".equalsIgnoreCase(role.getRoleCode()));
+            if (isBusinessOwner) {
+                throw new ResponseStatusException(
+                        HttpStatus.CONFLICT,
+                        "Business owner cannot be changed from staff management");
+            }
+        }
         if (request.fullName() != null && !request.fullName().isBlank()) {
             user.setFullName(request.fullName().trim());
         }
@@ -191,39 +254,105 @@ public class UserController {
             user.setPassword(passwordEncoder.encode(request.password()));
         }
         User updated = userRepository.save(user);
+        if (request.businessId() != null || request.roleId() != null || request.storeIds() != null) {
+            if (request.businessId() == null || request.roleId() == null || request.storeIds() == null) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "businessId, roleId, and storeIds are required when changing a staff role");
+            }
+            roleManagementService.assignStaffRole(
+                    updated, request.businessId(), request.roleId(), request.storeIds());
+        }
+        List<com.x.user.model.StoreMember> memberships = request.businessId() == null
+                ? storeMemberRepository.findByUser(updated)
+                : storeMemberRepository.findByUserAndRoleBusinessId(updated, request.businessId());
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "User updated successfully",
-                UserResponse.from(updated, storeMemberRepository.findByUser(updated))));
+                UserResponse.from(updated, memberships)));
     }
 
     @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
     @DeleteMapping("/{id:[0-9]+}")
     @Transactional
-    public ResponseEntity<Void> deleteUserById(@PathVariable Long id) {
+    public ResponseEntity<Void> deleteUserById(
+            @PathVariable Long id,
+            @RequestParam(required = false) @Positive Long businessId) {
         userRepository.findById(id).ifPresent(user -> {
-            refreshTokenRepository.deleteByUser(user);
-            storeMemberRepository.deleteAll(storeMemberRepository.findByUser(user));
-            userRepository.delete(user);
+            List<com.x.user.model.StoreMember> memberships = businessId == null
+                    ? storeMemberRepository.findByUser(user)
+                    : storeMemberRepository.findByUserAndRoleBusinessId(user, businessId);
+            if (businessId != null && memberships.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found for this business");
+            }
+            boolean ownsBusiness = memberships.stream()
+                    .map(com.x.user.model.StoreMember::getRole)
+                    .filter(java.util.Objects::nonNull)
+                    .anyMatch(role -> "OWNER".equalsIgnoreCase(role.getRoleCode()));
+            if (ownsBusiness) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Business owner cannot be deleted");
+            }
+            storeMemberRepository.deleteAll(memberships);
+            if (storeMemberRepository.findByUser(user).isEmpty()) {
+                refreshTokenRepository.deleteByUser(user);
+                userRepository.delete(user);
+            }
         });
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/roles")
     @Transactional(readOnly = true)
-    public ResponseEntity<ApiResponse<?>> getRoles() {
-        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), roleRepository.findAll()));
+    public ResponseEntity<ApiResponse<?>> getRoles(
+            @RequestParam(required = false) @Positive Long businessId) {
+        Object roles = businessId == null
+                ? roleRepository.findAll()
+                : roleManagementService.listRoles(businessId);
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), roles));
     }
 
     @GetMapping("/roles/{id:[0-9]+}")
     @Transactional(readOnly = true)
-    public ResponseEntity<ApiResponse<RoleDetailsResponse>> getRoleDetails(@PathVariable Long id) {
+    public ResponseEntity<ApiResponse<RoleDetailsResponse>> getRoleDetails(
+            @PathVariable Long id,
+            @RequestParam(required = false) @Positive Long businessId) {
         return roleRepository.findById(id)
-                .map(role -> ResponseEntity.ok(ApiResponse.success(
-                        HttpStatus.OK.value(),
-                        RoleDetailsResponse.from(
-                                role,
-                                permissionRepository.findAll(),
-                                rolePermissionRepository.findByRole(role)))))
+                .filter(role -> businessId == null || businessId.equals(role.getBusinessId()))
+                .map(role -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
+                        roleManagementService.getRole(role.getBusinessId(), role.getId()))))
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Role not found")));
+    }
+
+    @GetMapping("/roles/permissions")
+    @Transactional(readOnly = true)
+    public ResponseEntity<ApiResponse<List<PermissionResponse>>> getPermissions() {
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), roleManagementService.listPermissions()));
+    }
+
+    @PostMapping("/roles")
+    public ResponseEntity<ApiResponse<RoleDetailsResponse>> createRole(
+            @jakarta.validation.Valid @RequestBody RoleUpsertRequest request) {
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(
+                        HttpStatus.CREATED.value(),
+                        "Role created",
+                        roleManagementService.create(request)));
+    }
+
+    @PutMapping("/roles/{id:[0-9]+}")
+    public ResponseEntity<ApiResponse<RoleDetailsResponse>> updateRole(
+            @PathVariable Long id,
+            @jakarta.validation.Valid @RequestBody RoleUpsertRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                HttpStatus.OK.value(),
+                "Role updated",
+                roleManagementService.update(id, request)));
+    }
+
+    @DeleteMapping("/roles/{id:[0-9]+}")
+    public ResponseEntity<Void> deleteRole(
+            @PathVariable Long id,
+            @RequestParam @Positive Long businessId) {
+        roleManagementService.delete(businessId, id);
+        return ResponseEntity.noContent().build();
     }
 }
