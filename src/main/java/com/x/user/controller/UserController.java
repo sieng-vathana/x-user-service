@@ -35,7 +35,9 @@ import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Positive;
 
-import java.util.Set;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/internal/users")
@@ -115,7 +117,15 @@ public class UserController {
             @RequestParam(defaultValue = "0") @Min(0) int page,
             @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         var users = userRepository.findAll(PageRequest.of(page, size, Sort.by("id").ascending()));
-        var responses = users.getContent().stream().map(UserResponse::from).toList();
+        List<User> userList = users.getContent();
+        Map<Long, List<com.x.user.model.StoreMember>> membershipsByUser = userList.isEmpty()
+                ? Map.of()
+                : storeMemberRepository.findByUserIn(userList).stream()
+                        .collect(Collectors.groupingBy(member -> member.getUser().getId()));
+        var responses = userList.stream()
+                .map(user -> UserResponse.from(user,
+                        membershipsByUser.getOrDefault(user.getId(), List.of())))
+                .toList();
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), new PageResponse<>(
                 responses, users.getNumber(), users.getSize(), users.getTotalElements(),
                 users.getTotalPages(), users.hasNext())));
@@ -146,7 +156,8 @@ public class UserController {
     @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<UserResponse>> getUserById(@PathVariable Long id) {
         return userRepository.findById(id)
-                .map(user -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), UserResponse.from(user))))
+                .map(user -> ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(),
+                        UserResponse.from(user, storeMemberRepository.findByUser(user)))))
                 .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
                         .body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "User not found")));
     }
@@ -175,7 +186,8 @@ public class UserController {
             user.setPassword(passwordEncoder.encode(request.password()));
         }
         User updated = userRepository.save(user);
-        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "User updated successfully", UserResponse.from(updated)));
+        return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), "User updated successfully",
+                UserResponse.from(updated, storeMemberRepository.findByUser(updated))));
     }
 
     @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
