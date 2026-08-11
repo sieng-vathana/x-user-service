@@ -4,7 +4,10 @@ import com.x.user.dto.UserAuthResponse;
 import com.x.user.dto.UserRegistrationRequest;
 import com.x.user.dto.UserResponse;
 import com.x.user.dto.StoreAccessResponse;
+import com.x.user.dto.RoleDetailsResponse;
 import com.x.user.service.UserAuthenticationLookupService;
+import com.x.user.repository.PermissionRepository;
+import com.x.user.repository.RolePermissionRepository;
 import com.x.user.repository.StoreMemberRepository;
 import com.x.user.repository.RoleRepository;
 import com.x.user.model.User;
@@ -48,6 +51,8 @@ public class UserController {
     private final UserRepository userRepository;
     private final StoreMemberRepository storeMemberRepository;
     private final RoleRepository roleRepository;
+    private final PermissionRepository permissionRepository;
+    private final RolePermissionRepository rolePermissionRepository;
     private final com.x.user.repository.RefreshTokenRepository refreshTokenRepository;
     private final UserAuthenticationLookupService userAuthenticationLookupService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
@@ -206,5 +211,19 @@ public class UserController {
     @Transactional(readOnly = true)
     public ResponseEntity<ApiResponse<?>> getRoles() {
         return ResponseEntity.ok(ApiResponse.success(HttpStatus.OK.value(), roleRepository.findAll()));
+    }
+
+    @GetMapping("/roles/{id:[0-9]+}")
+    @Transactional(readOnly = true)
+    public ResponseEntity<ApiResponse<RoleDetailsResponse>> getRoleDetails(@PathVariable Long id) {
+        return roleRepository.findById(id)
+                .map(role -> ResponseEntity.ok(ApiResponse.success(
+                        HttpStatus.OK.value(),
+                        RoleDetailsResponse.from(
+                                role,
+                                permissionRepository.findAll(),
+                                rolePermissionRepository.findByRole(role)))))
+                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(ApiResponse.error(HttpStatus.NOT_FOUND.value(), "Role not found")));
     }
 }
