@@ -35,11 +35,17 @@ class RoleDetailsResponseTest {
                 .permissionName("Delete user")
                 .moduleName("USER")
                 .build();
+        Permission duplicateCreateProduct = Permission.builder()
+                .id(13L)
+                .permissionCode("x-product:create")
+                .permissionName("Create product")
+                .moduleName("PRODUCT")
+                .build();
 
         RoleDetailsResponse response = RoleDetailsResponse.from(
                 role,
-                List.of(deleteUser, createProduct),
-                List.of(RolePermission.builder().role(role).permission(createProduct).build()));
+                List.of(deleteUser, createProduct, duplicateCreateProduct),
+                List.of(RolePermission.builder().role(role).permission(duplicateCreateProduct).build()));
 
         assertEquals("MANAGER", response.roleCode());
         assertEquals(2, response.permissions().size());

@@ -23,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -47,18 +48,28 @@ public class RoleManagementService {
     @Transactional(readOnly = true)
     public List<RoleSummaryResponse> listRoles(Long businessId) {
         List<Role> roles = roleRepository.findAllByBusinessIdOrderByIsSystemDescRoleNameAsc(businessId);
-        Map<Long, Long> permissionCounts = roles.isEmpty()
-                ? Map.of()
-                : rolePermissionRepository.findByRoleIn(roles).stream()
-                        .filter(link -> link.getRole() != null && link.getRole().getId() != null)
-                        .collect(Collectors.groupingBy(link -> link.getRole().getId(), Collectors.counting()));
-        long allPermissionCount = permissionRepository.count();
+        Map<Long, Set<String>> permissionCodesByRole = new java.util.HashMap<>();
+        if (!roles.isEmpty()) {
+            for (RolePermission link : rolePermissionRepository.findByRoleIn(roles)) {
+                Role role = link.getRole();
+                Permission permission = link.getPermission();
+                if (role == null || role.getId() == null || permission == null
+                        || permission.getPermissionCode() == null
+                        || permission.getPermissionCode().isBlank()) {
+                    continue;
+                }
+                permissionCodesByRole
+                        .computeIfAbsent(role.getId(), ignored -> new LinkedHashSet<>())
+                        .add(permission.getPermissionCode().toLowerCase(Locale.ROOT));
+            }
+        }
+        long allPermissionCount = sortedPermissions().size();
         return roles.stream()
                 .map(role -> RoleSummaryResponse.from(
                         role,
                         isOwner(role)
                                 ? allPermissionCount
-                                : permissionCounts.getOrDefault(role.getId(), 0L)))
+                                : permissionCodesByRole.getOrDefault(role.getId(), Set.of()).size()))
                 .toList();
     }
 
@@ -243,11 +254,22 @@ public class RoleManagementService {
 
     private List<Permission> sortedPermissions() {
         Comparator<String> textOrder = Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER);
-        return permissionRepository.findAll().stream()
+        List<Permission> sorted = permissionRepository.findAll().stream()
                 .sorted(Comparator.comparing(Permission::getModuleName, textOrder)
                         .thenComparing(Permission::getPermissionName, textOrder)
                         .thenComparing(Permission::getPermissionCode, textOrder))
                 .toList();
+
+        Map<String, Permission> uniqueByCode = new LinkedHashMap<>();
+        for (Permission permission : sorted) {
+            if (permission.getPermissionCode() == null || permission.getPermissionCode().isBlank()) {
+                continue;
+            }
+            uniqueByCode.putIfAbsent(
+                    permission.getPermissionCode().toLowerCase(Locale.ROOT),
+                    permission);
+        }
+        return List.copyOf(uniqueByCode.values());
     }
 
     private String normalizeRoleCode(String requestedCode, String roleName) {

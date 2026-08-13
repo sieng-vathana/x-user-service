@@ -38,17 +38,38 @@ class RoleManagementServiceTest {
     void ownerSummaryAlwaysCountsTheCompletePermissionCatalog() {
         Role owner = role(1L, "OWNER", "Business Owner");
         Role cashier = role(2L, "CASHIER", "Cashier");
-        Permission readProduct = Permission.builder().id(10L).build();
+        Permission readProduct = Permission.builder().id(10L).permissionCode("x-product:read").build();
         when(roleRepository.findAllByBusinessIdOrderByIsSystemDescRoleNameAsc(7L))
                 .thenReturn(List.of(owner, cashier));
         when(rolePermissionRepository.findByRoleIn(List.of(owner, cashier)))
                 .thenReturn(List.of(RolePermission.builder().role(cashier).permission(readProduct).build()));
-        when(permissionRepository.count()).thenReturn(12L);
+        when(permissionRepository.findAll()).thenReturn(java.util.stream.IntStream.range(0, 12)
+                .mapToObj(index -> Permission.builder()
+                        .id((long) index + 1)
+                        .permissionCode("x-permission:" + index)
+                        .build())
+                .toList());
 
         var result = service.listRoles(7L);
 
         assertEquals(12L, result.get(0).permissionCount());
         assertEquals(1L, result.get(1).permissionCount());
+    }
+
+    @Test
+    void customRoleSummaryCountsEachPermissionCodeOnce() {
+        Role cashier = role(2L, "CASHIER", "Cashier");
+        Permission readProduct = Permission.builder().id(10L).permissionCode("x-product:read").build();
+        Permission duplicateReadProduct = Permission.builder().id(11L).permissionCode("x-product:read").build();
+        when(roleRepository.findAllByBusinessIdOrderByIsSystemDescRoleNameAsc(7L)).thenReturn(List.of(cashier));
+        when(rolePermissionRepository.findByRoleIn(List.of(cashier))).thenReturn(List.of(
+                RolePermission.builder().role(cashier).permission(readProduct).build(),
+                RolePermission.builder().role(cashier).permission(duplicateReadProduct).build()));
+        when(permissionRepository.findAll()).thenReturn(List.of(readProduct, duplicateReadProduct));
+
+        var result = service.listRoles(7L);
+
+        assertEquals(1L, result.get(0).permissionCount());
     }
 
     @Test
