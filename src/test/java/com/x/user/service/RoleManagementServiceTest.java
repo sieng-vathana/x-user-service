@@ -82,6 +82,24 @@ class RoleManagementServiceTest {
         verify(roleRepository, never()).delete(owner);
     }
 
+    @Test
+    void failedRegistrationCleanupKeepsRolesThatAreStillAssigned() {
+        Role owner = role(1L, "OWNER", "Business Owner");
+        Role cashier = role(2L, "CASHIER", "Cashier");
+        RolePermission ownerGrant = RolePermission.builder().role(owner).build();
+        when(roleRepository.findAllByBusinessIdOrderByIsSystemDescRoleNameAsc(7L))
+                .thenReturn(List.of(owner, cashier));
+        when(storeMemberRepository.existsByRole(owner)).thenReturn(false);
+        when(storeMemberRepository.existsByRole(cashier)).thenReturn(true);
+        when(rolePermissionRepository.findByRole(owner)).thenReturn(List.of(ownerGrant));
+
+        service.deleteUnassignedRoles(7L);
+
+        verify(rolePermissionRepository).deleteAll(List.of(ownerGrant));
+        verify(roleRepository).delete(owner);
+        verify(roleRepository, never()).delete(cashier);
+    }
+
     private Role role(Long id, String code, String name) {
         return Role.builder()
                 .id(id)

@@ -84,16 +84,24 @@ public class UserController {
                 .body(ApiResponse.success(HttpStatus.CREATED.value(), "Account created", UserResponse.from(user)));
     }
 
-    /** Removes an account created by a registration workflow that later failed. */
-    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, key = "#username.trim()")
+    /**
+     * Removes an account created by a registration workflow that later failed,
+     * together with the roles made for its new business.
+     */
+    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
     @DeleteMapping("/{username}/registration-failure")
     @Transactional
-    public ResponseEntity<Void> deleteFailedRegistration(@PathVariable String username) {
+    public ResponseEntity<Void> deleteFailedRegistration(
+            @PathVariable String username,
+            @RequestParam(required = false) @Positive Long businessId) {
         userRepository.findByUsername(username.trim()).ifPresent(user -> {
             refreshTokenRepository.deleteByUser(user);
             storeMemberRepository.deleteAll(storeMemberRepository.findByUser(user));
             userRepository.delete(user);
         });
+        if (businessId != null) {
+            roleManagementService.deleteUnassignedRoles(businessId);
+        }
         return ResponseEntity.noContent().build();
     }
 

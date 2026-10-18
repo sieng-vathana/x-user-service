@@ -167,6 +167,19 @@ public class RoleManagementService {
         return ownerRole;
     }
 
+    /** Undoes the roles of a business whose registration failed; a role still assigned to anyone is kept. */
+    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
+    @Transactional
+    public void deleteUnassignedRoles(Long businessId) {
+        for (Role role : roleRepository.findAllByBusinessIdOrderByIsSystemDescRoleNameAsc(businessId)) {
+            if (storeMemberRepository.existsByRole(role)) {
+                continue;
+            }
+            rolePermissionRepository.deleteAll(rolePermissionRepository.findByRole(role));
+            roleRepository.delete(role);
+        }
+    }
+
     @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
     @Transactional
     public void assignStaffRole(User user, Long businessId, Long roleId, List<Long> storeIds) {
