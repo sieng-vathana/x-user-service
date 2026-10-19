@@ -34,6 +34,10 @@ x:
     default-ttl: 10m
     caches:
       user-by-username: 10m
+  telegram:
+    auth-bot-token: ${TELEGRAM_AUTH_BOT_TOKEN:}
+    auth-api-base-url: ${TELEGRAM_AUTH_API_BASE_URL:https://api.telegram.org}
+    auth-polling-enabled: ${TELEGRAM_AUTH_POLLING_ENABLED:true}
   seed:
     admin-username: ${X_SEED_ADMIN_USERNAME:admin}
     admin-password: ${X_SEED_ADMIN_PASSWORD:Admin@123456}
