@@ -18,9 +18,10 @@ spring:
           auth: ${MAIL_SMTP_AUTH:true}
           ssl:
             enable: ${MAIL_SMTP_SSL_ENABLE:true}
-          connectiontimeout: 5000
-          timeout: 5000
-          writetimeout: 5000
+          # Hostinger can take 5-10 seconds to answer; shorter limits made code emails fail now and then.
+          connectiontimeout: 10000
+          timeout: 20000
+          writetimeout: 20000
   profiles:
     # local-seed creates admin / Admin@123456 on empty DB
     default: local,local-seed
