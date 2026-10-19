@@ -32,13 +32,24 @@ public class DatabaseMigrations {
     /** Each service keeps its own history table because they all share one schema. */
     static final String HISTORY_TABLE = "flyway_schema_history_user";
 
-    /** OWNER always holds every permission, including codes added by later migrations. */
-    static final String GRANT_EVERY_PERMISSION_TO_OWNERS = """
+    /** Keep business-owner permissions separate from platform-wide administration. */
+    static final String REMOVE_PLATFORM_ADMIN_FROM_BUSINESS_OWNERS = """
+            DELETE rp
+            FROM role_permissions rp
+            INNER JOIN roles r ON r.id = rp.role_id
+            INNER JOIN permissions p ON p.id = rp.permission_id
+            WHERE UPPER(r.role_code) = 'OWNER'
+              AND LOWER(p.permission_code) = 'platform:admin'
+            """;
+
+    static final String GRANT_ROLE_PERMISSIONS = """
             INSERT INTO role_permissions (role_id, permission_id)
             SELECT r.id, p.id
             FROM roles r
             CROSS JOIN permissions p
-            WHERE UPPER(r.role_code) = 'OWNER'
+            WHERE (UPPER(r.role_code) = 'PLATFORM_OWNER'
+                   OR (UPPER(r.role_code) = 'OWNER'
+                       AND LOWER(p.permission_code) <> 'platform:admin'))
               AND NOT EXISTS (
                   SELECT 1 FROM role_permissions rp
                   WHERE rp.role_id = r.id AND rp.permission_id = p.id)
@@ -60,10 +71,12 @@ public class DatabaseMigrations {
                 .baselineVersion("0")
                 .load()
                 .migrate();
-        int ownerGrants = new JdbcTemplate(dataSource).update(GRANT_EVERY_PERMISSION_TO_OWNERS);
+        JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+        int removedPlatformGrants = jdbc.update(REMOVE_PLATFORM_ADMIN_FROM_BUSINESS_OWNERS);
+        int roleGrants = jdbc.update(GRANT_ROLE_PERMISSIONS);
         log.info("Database migrations: {} applied, {} owner permission grants added",
-                result.migrationsExecuted, ownerGrants);
-        if (result.migrationsExecuted > 0 || ownerGrants > 0) {
+                result.migrationsExecuted, roleGrants);
+        if (result.migrationsExecuted > 0 || removedPlatformGrants > 0 || roleGrants > 0) {
             clearCachedPermissions();
         }
     }

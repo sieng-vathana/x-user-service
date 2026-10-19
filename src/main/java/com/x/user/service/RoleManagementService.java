@@ -38,6 +38,8 @@ import java.util.stream.Collectors;
 public class RoleManagementService {
 
     private static final String OWNER_CODE = "OWNER";
+    private static final String PLATFORM_OWNER_CODE = "PLATFORM_OWNER";
+    private static final String PLATFORM_ADMIN_PERMISSION = "platform:admin";
 
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
@@ -63,7 +65,9 @@ public class RoleManagementService {
                         .add(permission.getPermissionCode().toLowerCase(Locale.ROOT));
             }
         }
-        long allPermissionCount = sortedPermissions().size();
+        long allPermissionCount = sortedPermissions().stream()
+                .filter(permission -> !isPlatformAdminPermission(permission))
+                .count();
         return roles.stream()
                 .map(role -> RoleSummaryResponse.from(
                         role,
@@ -79,6 +83,7 @@ public class RoleManagementService {
         List<Permission> allPermissions = sortedPermissions();
         List<RolePermission> assigned = isOwner(role)
                 ? allPermissions.stream()
+                        .filter(permission -> !isPlatformAdminPermission(permission))
                         .map(permission -> RolePermission.builder().role(role).permission(permission).build())
                         .toList()
                 : rolePermissionRepository.findByRole(role);
@@ -156,7 +161,7 @@ public class RoleManagementService {
             ownerRole.setIsSystem(true);
             roleRepository.save(ownerRole);
         }
-        addMissingOwnerPermissions(ownerRole);
+        addMissingRolePermissions(ownerRole);
 
         for (Long storeId : new LinkedHashSet<>(storeIds)) {
             StoreMember membership = storeMemberRepository.findByUserIdAndStoreId(userId, storeId)
@@ -165,6 +170,40 @@ public class RoleManagementService {
             storeMemberRepository.save(membership);
         }
         return ownerRole;
+    }
+
+    /** Gives a single user the global PLATFORM_OWNER role, independent of merchant memberships. */
+    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
+    @Transactional
+    public Role ensurePlatformOwnerAccess(Long userId) {
+        User owner = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        Role platformOwnerRole = roleRepository.findByBusinessIdAndRoleCodeIgnoreCase(null, PLATFORM_OWNER_CODE)
+                .orElseGet(() -> roleRepository.save(Role.builder()
+                        .businessId(null)
+                        .roleCode(PLATFORM_OWNER_CODE)
+                        .roleName("Platform Owner")
+                        .description("Full access to platform backoffice operations")
+                        .isSystem(true)
+                        .build()));
+        if (!Boolean.TRUE.equals(platformOwnerRole.getIsSystem())) {
+            platformOwnerRole.setIsSystem(true);
+            platformOwnerRole = roleRepository.save(platformOwnerRole);
+        }
+        addMissingRolePermissions(platformOwnerRole);
+
+        boolean alreadyAssigned = storeMemberRepository.findByUser(owner).stream()
+                .anyMatch(member -> member.getStoreId() == null
+                        && member.getRole() != null
+                        && PLATFORM_OWNER_CODE.equalsIgnoreCase(member.getRole().getRoleCode()));
+        if (!alreadyAssigned) {
+            storeMemberRepository.save(StoreMember.builder()
+                    .user(owner)
+                    .storeId(null)
+                    .role(platformOwnerRole)
+                    .build());
+        }
+        return platformOwnerRole;
     }
 
     /** Undoes the roles of a business whose registration failed; a role still assigned to anyone is kept. */
@@ -227,6 +266,10 @@ public class RoleManagementService {
         if (permissions.size() != requestedPermissionIds.size()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "One or more permissions do not exist");
         }
+        if (role.getBusinessId() != null && permissions.stream().anyMatch(this::isPlatformAdminPermission)) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Platform permissions cannot be assigned to merchant roles");
+        }
         rolePermissionRepository.deleteAll(rolePermissionRepository.findByRole(role));
         if (!permissions.isEmpty()) {
             rolePermissionRepository.saveAll(permissions.stream()
@@ -235,13 +278,14 @@ public class RoleManagementService {
         }
     }
 
-    private void addMissingOwnerPermissions(Role ownerRole) {
+    private void addMissingRolePermissions(Role ownerRole) {
         Set<Long> assignedIds = rolePermissionRepository.findByRole(ownerRole).stream()
                 .map(RolePermission::getPermission)
                 .filter(Objects::nonNull)
                 .map(Permission::getId)
                 .collect(Collectors.toSet());
         List<RolePermission> missing = permissionRepository.findAll().stream()
+                .filter(permission -> !isOwner(ownerRole) || !isPlatformAdminPermission(permission))
                 .filter(permission -> !assignedIds.contains(permission.getId()))
                 .map(permission -> RolePermission.builder().role(ownerRole).permission(permission).build())
                 .toList();
@@ -263,6 +307,11 @@ public class RoleManagementService {
 
     private boolean isOwner(Role role) {
         return role.getRoleCode() != null && OWNER_CODE.equalsIgnoreCase(role.getRoleCode());
+    }
+
+    private boolean isPlatformAdminPermission(Permission permission) {
+        return permission.getPermissionCode() != null
+                && PLATFORM_ADMIN_PERMISSION.equalsIgnoreCase(permission.getPermissionCode());
     }
 
     private List<Permission> sortedPermissions() {

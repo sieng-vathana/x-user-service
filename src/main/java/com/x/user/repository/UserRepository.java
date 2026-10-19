@@ -66,7 +66,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
                     ON rp.role_id = r.id
                    AND rp.permission_id = p.id
                   WHERE sm.user_id = :userId
-                    AND r.business_id = :businessId
+                    AND (r.business_id = :businessId OR UPPER(r.role_code) = 'PLATFORM_OWNER')
                     AND (UPPER(r.role_code) = 'OWNER' OR rp.permission_id IS NOT NULL)
               )
             """, nativeQuery = true)

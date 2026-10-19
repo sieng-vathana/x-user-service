@@ -2,6 +2,7 @@ package com.x.user.config;
 
 import com.x.user.model.*;
 import com.x.user.repository.*;
+import com.x.user.service.RoleManagementService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,6 +74,7 @@ public class DataInitializer implements CommandLineRunner {
     private final PermissionRepository permissionRepository;
     private final RolePermissionRepository rolePermissionRepository;
     private final StoreMemberRepository storeMemberRepository;
+    private final RoleManagementService roleManagementService;
 
     @Value("${x.seed.admin-username:admin}")
     private String adminUsername;
@@ -148,6 +150,8 @@ public class DataInitializer implements CommandLineRunner {
                     .build());
             log.info("Assigned user '{}' to store {} with OWNER role.", adminUsername, DEFAULT_STORE_ID);
         }
+
+        roleManagementService.ensurePlatformOwnerAccess(seededAdmin.getId());
 
         log.info("RBAC seed complete: x-{{service}}:{{action}} — {} permission codes", byCode.size());
     }
