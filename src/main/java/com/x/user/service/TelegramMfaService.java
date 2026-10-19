@@ -6,6 +6,7 @@ import com.x.user.dto.TelegramMfaStatusResponse;
 import com.x.user.model.UserTelegramMfa;
 import com.x.user.model.UserTelegramMfaChallenge;
 import com.x.user.repository.UserTelegramMfaChallengeRepository;
+import com.x.user.repository.UserRepository;
 import com.x.user.repository.UserTelegramMfaRepository;
 import com.x.user.telegram.TelegramAuthClient;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +33,7 @@ public class TelegramMfaService {
     private static final Duration SEND_COOLDOWN = Duration.ofSeconds(30);
     private static final int MAX_ATTEMPTS = 5;
 
+    private final UserRepository userRepository;
     private final UserTelegramMfaRepository accountRepository;
     private final UserTelegramMfaChallengeRepository challengeRepository;
     private final TelegramAuthClient telegram;
@@ -128,8 +130,11 @@ public class TelegramMfaService {
         challenge.setExpiresAt(now.plus(CHALLENGE_TTL));
         challengeRepository.save(challenge);
         try {
-            telegram.sendMessage(account.getChatId(),
-                    "TinhLuk sign-in code: " + code + "\n\nIt expires in 5 minutes. If you did not try to sign in, ignore this message.");
+            String name = userRepository.findById(userId)
+                    .map(user -> user.getFullName() != null && !user.getFullName().isBlank() ? user.getFullName() : user.getUsername())
+                    .orElse(username);
+            telegram.sendBrandedMessage(account.getChatId(),
+                    MfaMessages.telegramCode(MfaMessages.Purpose.TELEGRAM_LOGIN, name, code, challenge.getExpiresAt()));
         } catch (RuntimeException exception) {
             challengeRepository.delete(challenge);
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not send the Telegram sign-in code");

@@ -2,6 +2,7 @@ package com.x.user.telegram;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.x.user.config.TelegramAuthProperties;
+import com.x.user.service.MfaMessages;
 import com.x.user.service.TelegramMfaService;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -47,12 +48,11 @@ public class TelegramAuthUpdatePoller {
         if (!"private".equalsIgnoreCase(chat.path("type").asText()) || !text.startsWith("/start")) return;
         String[] parts = text.split("\\s+", 2);
         if (parts.length < 2 || parts[1].isBlank()) {
-            telegram.sendMessage(chatId, "To link this Telegram account, open Account Settings → Security in TinhLuk and choose Connect Telegram.");
+            telegram.sendBrandedMessage(chatId, MfaMessages.telegramWelcome());
             return;
         }
         boolean connected = mfaService.connect(parts[1].trim(), chatId, "private");
-        telegram.sendMessage(chatId, connected
-                ? "Telegram is linked to your TinhLuk account. Return to Account Settings → Security to enable 2FA."
-                : "This connection link is invalid or expired. Create a new link in TinhLuk Account Settings → Security.");
+        if (connected) telegram.sendBrandedMessage(chatId, MfaMessages.telegramLinked());
+        else telegram.sendHtmlMessage(chatId, MfaMessages.telegramLinkInvalid());
     }
 }

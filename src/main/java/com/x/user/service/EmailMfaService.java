@@ -11,6 +11,7 @@ import com.x.user.repository.UserRepository;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.mail.javamail.MimeMessageHelper;
@@ -161,11 +162,15 @@ public class EmailMfaService {
         challengeRepository.save(challenge);
         try {
             MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, StandardCharsets.UTF_8.name());
-            helper.setFrom(senderAddress);
+            MimeMessageHelper helper = new MimeMessageHelper(message, true, StandardCharsets.UTF_8.name());
+            MfaMessages.Purpose wording = purpose.equals(SETUP) ? MfaMessages.Purpose.EMAIL_SETUP : MfaMessages.Purpose.EMAIL_LOGIN;
+            String name = displayName(getUser(userId));
+            helper.setFrom(senderAddress, MfaMessages.PRODUCT);
             helper.setTo(email);
-            helper.setSubject(purpose.equals(SETUP) ? "Verify your TinhLuk sign-in email" : "Your TinhLuk sign-in code");
-            helper.setText("Your TinhLuk verification code is " + code + ".\n\nIt expires in 5 minutes. If you did not request it, you can ignore this email.");
+            helper.setSubject(MfaMessages.emailSubject(wording));
+            helper.setText(MfaMessages.emailText(wording, name, code, challenge.getExpiresAt()),
+                    MfaMessages.emailHtml(wording, name, code, challenge.getExpiresAt()));
+            helper.addInline(MfaMessages.EMAIL_LOGO_ID, new ClassPathResource(MfaMessages.EMAIL_LOGO_PATH), "image/png");
             mailSender.send(message);
         } catch (Exception exception) {
             challengeRepository.delete(challenge);
@@ -209,6 +214,11 @@ public class EmailMfaService {
         byte[] value = new byte[bytes];
         random.nextBytes(value);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(value);
+    }
+
+    private static String displayName(User user) {
+        if (user.getFullName() != null && !user.getFullName().isBlank()) return user.getFullName();
+        return user.getUsername();
     }
 
     private static String normalize(String email) {
