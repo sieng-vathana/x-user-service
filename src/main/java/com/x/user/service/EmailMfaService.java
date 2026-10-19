@@ -10,6 +10,8 @@ import com.x.user.repository.UserEmailMfaRepository;
 import com.x.user.repository.UserRepository;
 import jakarta.mail.internet.MimeMessage;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
@@ -33,6 +35,7 @@ import java.util.Locale;
 @Service
 @RequiredArgsConstructor
 public class EmailMfaService {
+    private static final Logger log = LoggerFactory.getLogger(EmailMfaService.class);
     private static final Duration CHALLENGE_TTL = Duration.ofMinutes(5);
     private static final Duration SEND_COOLDOWN = Duration.ofSeconds(30);
     private static final int MAX_ATTEMPTS = 5;
@@ -174,6 +177,7 @@ public class EmailMfaService {
             mailSender.send(message);
         } catch (Exception exception) {
             challengeRepository.delete(challenge);
+            log.warn("Email verification code to {} was not sent: {}", mask(email), describe(exception));
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Could not send the email verification code");
         }
         return new EmailMfaChallengeResponse(token, challenge.getExpiresAt(), mask(email));
@@ -219,6 +223,17 @@ public class EmailMfaService {
     private static String displayName(User user) {
         if (user.getFullName() != null && !user.getFullName().isBlank()) return user.getFullName();
         return user.getUsername();
+    }
+
+    /** The exception chain in one line, without the message body or credentials. */
+    private static String describe(Throwable exception) {
+        StringBuilder text = new StringBuilder();
+        for (Throwable cause = exception; cause != null && text.length() < 600; cause = cause.getCause()) {
+            if (!text.isEmpty()) text.append(" <- ");
+            text.append(cause.getClass().getSimpleName()).append(": ").append(cause.getMessage());
+            if (cause.getCause() == cause) break;
+        }
+        return text.toString();
     }
 
     private static String normalize(String email) {
