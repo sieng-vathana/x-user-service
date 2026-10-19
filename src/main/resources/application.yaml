@@ -7,6 +7,20 @@ spring:
     mode: console
   application:
     name: x-user-service
+  mail:
+    host: ${MAIL_HOST:}
+    port: ${MAIL_PORT:465}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          ssl:
+            enable: ${MAIL_SMTP_SSL_ENABLE:true}
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
   profiles:
     # local-seed creates admin / Admin@123456 on empty DB
     default: local,local-seed
@@ -43,3 +57,8 @@ x:
     admin-password: ${X_SEED_ADMIN_PASSWORD:Admin@123456}
     admin-full-name: ${X_SEED_ADMIN_FULL_NAME:System Administrator}
     admin-email: ${X_SEED_ADMIN_EMAIL:admin@x.local}
+
+security:
+  mfa:
+    email:
+      from: ${MAIL_FROM:}

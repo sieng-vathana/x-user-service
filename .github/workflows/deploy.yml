@@ -71,6 +71,10 @@ jobs:
           if sudo k3s kubectl -n x-platform get secret x-telegram-auth-bot >/dev/null 2>&1; then
             sudo k3s kubectl -n x-platform set env deployment/x-user-service --from=secret/x-telegram-auth-bot
           fi
+          # Sender mailbox credentials are injected from a namespace Secret, never from Git.
+          if sudo k3s kubectl -n x-platform get secret x-email-smtp >/dev/null 2>&1; then
+            sudo k3s kubectl -n x-platform set env deployment/x-user-service --from=secret/x-email-smtp
+          fi
           sudo k3s kubectl -n x-platform patch deployment x-user-service --type=strategic -p='{"spec":{"template":{"spec":{"imagePullSecrets":[{"name":"ghcr-pull-x-user-service"}]}}}}'
           sudo k3s kubectl -n x-platform rollout status deployment/x-user-service --timeout=180s
   notify:
