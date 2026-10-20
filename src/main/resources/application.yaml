@@ -22,6 +22,12 @@ spring:
           connectiontimeout: 10000
           timeout: 20000
           writetimeout: 20000
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      properties:
+        # Realtime events are best effort; never wait long for a missing broker.
+        max.block.ms: 2000
   profiles:
     # local-seed creates admin / Admin@123456 on empty DB
     default: local,local-seed

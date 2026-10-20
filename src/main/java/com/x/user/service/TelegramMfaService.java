@@ -8,6 +8,7 @@ import com.x.user.model.UserTelegramMfaChallenge;
 import com.x.user.repository.UserTelegramMfaChallengeRepository;
 import com.x.user.repository.UserRepository;
 import com.x.user.repository.UserTelegramMfaRepository;
+import com.x.user.realtime.RealtimePublisher;
 import com.x.user.telegram.TelegramAuthClient;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -37,6 +38,7 @@ public class TelegramMfaService {
     private final UserTelegramMfaRepository accountRepository;
     private final UserTelegramMfaChallengeRepository challengeRepository;
     private final TelegramAuthClient telegram;
+    private final RealtimePublisher realtime;
     private final SecureRandom random = new SecureRandom();
     private final BCryptPasswordEncoder codeEncoder = new BCryptPasswordEncoder();
 
@@ -86,6 +88,8 @@ public class TelegramMfaService {
         account.setLinkCodeHash(null);
         account.setLinkExpiresAt(null);
         accountRepository.save(account);
+        // The security page waiting for the link updates on its own.
+        realtime.toUser(account.getUserId(), "telegram.mfa.linked", java.util.Map.of());
         return true;
     }
 
