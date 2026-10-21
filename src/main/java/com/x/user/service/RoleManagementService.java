@@ -38,8 +38,17 @@ import java.util.stream.Collectors;
 public class RoleManagementService {
 
     private static final String OWNER_CODE = "OWNER";
+    private static final String CASHIER_CODE = "CASHIER";
     private static final String PLATFORM_OWNER_CODE = "PLATFORM_OWNER";
     private static final String PLATFORM_ADMIN_PERMISSION = "platform:admin";
+    private static final List<String> DEFAULT_CASHIER_PERMISSIONS = List.of(
+            "x-bff:read",
+            "x-customer:create",
+            "x-customer:read",
+            "x-order:create",
+            "x-order:read",
+            "x-product:read",
+            "x-store:read");
 
     private final RoleRepository roleRepository;
     private final PermissionRepository permissionRepository;
@@ -146,6 +155,7 @@ public class RoleManagementService {
     @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
     @Transactional
     public Role ensureOwnerAccess(Long userId, Long businessId, List<Long> storeIds) {
+        ensureDefaultStaffRoles(businessId);
         User owner = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         Role ownerRole = roleRepository.findByBusinessIdAndRoleCodeIgnoreCase(businessId, OWNER_CODE)
@@ -170,6 +180,43 @@ public class RoleManagementService {
             storeMemberRepository.save(membership);
         }
         return ownerRole;
+    }
+
+    /** Creates a least-privilege cashier role so a new business can add staff immediately. */
+    @CacheEvict(cacheNames = CacheNames.USER_BY_USERNAME, allEntries = true)
+    @Transactional
+    public void ensureDefaultStaffRoles(Long businessId) {
+        Role cashierRole = roleRepository.findByBusinessIdAndRoleCodeIgnoreCase(businessId, CASHIER_CODE)
+                .orElseGet(() -> roleRepository.save(Role.builder()
+                        .businessId(businessId)
+                        .roleCode(CASHIER_CODE)
+                        .roleName("Cashier")
+                        .description("Can use point of sale, view products and sales, and manage customer records")
+                        .isSystem(true)
+                        .build()));
+
+        // Preserve an existing merchant-defined role with the same code and permissions.
+        if (!Boolean.TRUE.equals(cashierRole.getIsSystem())) {
+            return;
+        }
+
+        Set<Long> assignedPermissionIds = rolePermissionRepository.findByRole(cashierRole).stream()
+                .map(RolePermission::getPermission)
+                .filter(Objects::nonNull)
+                .map(Permission::getId)
+                .collect(Collectors.toSet());
+        List<RolePermission> missingPermissions = DEFAULT_CASHIER_PERMISSIONS.stream()
+                .map(permissionRepository::findByPermissionCode)
+                .flatMap(java.util.Optional::stream)
+                .filter(permission -> !assignedPermissionIds.contains(permission.getId()))
+                .map(permission -> RolePermission.builder()
+                        .role(cashierRole)
+                        .permission(permission)
+                        .build())
+                .toList();
+        if (!missingPermissions.isEmpty()) {
+            rolePermissionRepository.saveAll(missingPermissions);
+        }
     }
 
     /** Gives a single user the global PLATFORM_OWNER role, independent of merchant memberships. */

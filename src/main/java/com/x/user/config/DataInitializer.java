@@ -152,6 +152,7 @@ public class DataInitializer implements CommandLineRunner {
         }
 
         roleManagementService.ensurePlatformOwnerAccess(seededAdmin.getId());
+        roleManagementService.ensureDefaultStaffRoles(DEFAULT_BUSINESS_ID);
 
         log.info("RBAC seed complete: x-{{service}}:{{action}} — {} permission codes", byCode.size());
     }
